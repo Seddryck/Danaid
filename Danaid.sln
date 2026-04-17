@@ -1,12 +1,8 @@
 Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio Version 18
-VisualStudioVersion = 18.5.11626.173 insiders
+VisualStudioVersion = 18.5.11626.173
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Danaid.Core", "src\Danaid.Core\Danaid.Core.csproj", "{4B5AF43E-E41C-4064-822C-988082C56A2E}"
-EndProject
-Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Danaid.Cli", "src\Danaid.Cli\Danaid.Cli.csproj", "{32DB1358-0491-40D0-83B8-4862504AE85B}"
-EndProject
-Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Danaid.Cli.Testing", "src\Danaid.Cli.Testing\Danaid.Cli.Testing.csproj", "{6B4E70A9-7F05-4DA5-8E85-7A72FD34C8C8}"
 EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Solution Items", "Solution Items", "{C923A152-4091-48BE-A984-686FF5E4ACCC}"
 	ProjectSection(SolutionItems) = preProject
@@ -40,6 +36,10 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Edit", "Edit", "{210C887C-6
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Danaid.Core.Testing", "src\Danaid.Core.Testing\Danaid.Core.Testing.csproj", "{42170393-28AE-0AB2-F9DB-27E8EEA44861}"
 EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Specs", "Specs", "{33F4F5CA-A785-4B62-BB13-7C58E57A8ABF}"
+EndProject
+Project("{D954291E-2A0B-460D-934E-DC6B0785DB48}") = "Danaid.Specs", ".specs\Danaid.Specs.shproj", "{2FB3E8F3-2CA0-4B7B-9647-09EA7366FF92}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -50,14 +50,6 @@ Global
 		{4B5AF43E-E41C-4064-822C-988082C56A2E}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{4B5AF43E-E41C-4064-822C-988082C56A2E}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{4B5AF43E-E41C-4064-822C-988082C56A2E}.Release|Any CPU.Build.0 = Release|Any CPU
-		{32DB1358-0491-40D0-83B8-4862504AE85B}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
-		{32DB1358-0491-40D0-83B8-4862504AE85B}.Debug|Any CPU.Build.0 = Debug|Any CPU
-		{32DB1358-0491-40D0-83B8-4862504AE85B}.Release|Any CPU.ActiveCfg = Release|Any CPU
-		{32DB1358-0491-40D0-83B8-4862504AE85B}.Release|Any CPU.Build.0 = Release|Any CPU
-		{6B4E70A9-7F05-4DA5-8E85-7A72FD34C8C8}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
-		{6B4E70A9-7F05-4DA5-8E85-7A72FD34C8C8}.Debug|Any CPU.Build.0 = Debug|Any CPU
-		{6B4E70A9-7F05-4DA5-8E85-7A72FD34C8C8}.Release|Any CPU.ActiveCfg = Release|Any CPU
-		{6B4E70A9-7F05-4DA5-8E85-7A72FD34C8C8}.Release|Any CPU.Build.0 = Release|Any CPU
 		{42170393-28AE-0AB2-F9DB-27E8EEA44861}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
 		{42170393-28AE-0AB2-F9DB-27E8EEA44861}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{42170393-28AE-0AB2-F9DB-27E8EEA44861}.Release|Any CPU.ActiveCfg = Release|Any CPU
@@ -66,7 +58,13 @@ Global
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
 	EndGlobalSection
+	GlobalSection(NestedProjects) = preSolution
+		{2FB3E8F3-2CA0-4B7B-9647-09EA7366FF92} = {33F4F5CA-A785-4B62-BB13-7C58E57A8ABF}
+	EndGlobalSection
 	GlobalSection(ExtensibilityGlobals) = postSolution
 		SolutionGuid = {4AF64100-8E3B-4ACF-8266-89231A365F92}
+	EndGlobalSection
+	GlobalSection(SharedMSBuildProjectFiles) = preSolution
+		.specs\Danaid.Specs.projitems*{2fb3e8f3-2ca0-4b7b-9647-09ea7366ff92}*SharedItemsImports = 13
 	EndGlobalSection
 EndGlobal
