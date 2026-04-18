@@ -1,3 +1,5 @@
+using Danaid.Core.Capture;
+
 namespace Danaid.Core.Storage;
 
 public interface IStorageWriter

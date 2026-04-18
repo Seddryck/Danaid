@@ -1,12 +1,12 @@
 using System.Collections.Concurrent;
-using System.Diagnostics.Metrics;
+using Danaid.Core.Capture;
 using Danaid.Core.Storage;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using RabbitMQ.Client;
 using RabbitMQ.Client.Events;
 
-namespace Danaid.Core;
+namespace Danaid.Core.Consumption;
 
 public sealed class RabbitMqConsumer : IAsyncDisposable
 {
@@ -53,7 +53,12 @@ public sealed class RabbitMqConsumer : IAsyncDisposable
             }
             catch (Exception ex)
             {
-                logger.LogError(ex, "RabbitMQ consumer loop failure. Reconnecting in {Delay}.", options.ReconnectDelay);
+                logger.LogError(
+                    ex,
+                    "RabbitMQ consumer loop failure. Queue={QueueName} Delay={Delay}",
+                    options.QueueName,
+                    options.ReconnectDelay);
+
                 await Task.Delay(options.ReconnectDelay, cancellationToken);
             }
             finally
@@ -77,7 +82,11 @@ public sealed class RabbitMqConsumer : IAsyncDisposable
         connection = await factory.CreateConnectionAsync(cancellationToken: cancellationToken);
         channel = await connection.CreateChannelAsync(cancellationToken: cancellationToken);
 
-        await channel.BasicQosAsync(prefetchSize: 0, prefetchCount: options.PrefetchCount, global: false, cancellationToken: cancellationToken);
+        await channel.BasicQosAsync(
+            prefetchSize: 0,
+            prefetchCount: options.PrefetchCount,
+            global: false,
+            cancellationToken: cancellationToken);
 
         var consumer = new AsyncEventingBasicConsumer(channel);
         consumer.ReceivedAsync += OnMessageReceivedAsync;
@@ -92,7 +101,10 @@ public sealed class RabbitMqConsumer : IAsyncDisposable
             consumer: consumer,
             cancellationToken: cancellationToken);
 
-        logger.LogInformation("RabbitMQ consumer started. Queue={QueueName} ConsumerTag={ConsumerTag}", options.QueueName, consumerTag);
+        logger.LogInformation(
+            "RabbitMQ consumer started. Queue={QueueName} ConsumerTag={ConsumerTag}",
+            options.QueueName,
+            consumerTag);
     }
 
     private async Task OnMessageReceivedAsync(object sender, BasicDeliverEventArgs args)
@@ -111,18 +123,20 @@ public sealed class RabbitMqConsumer : IAsyncDisposable
             TimestampUtc: DateTimeOffset.UtcNow);
 
         var buffered = new BufferedDelivery(args.DeliveryTag, message);
+
         inFlight[args.DeliveryTag] = buffered;
         telemetry.SetQueueLag(inFlight.Count);
+        telemetry.MessageReceived();
 
         await batchBuffer.EnqueueAsync(buffered, CancellationToken.None);
-        telemetry.MessageReceived();
 
         if (logger.IsEnabled(LogLevel.Debug))
         {
-            logger.LogDebug("Message received. DeliveryTag={DeliveryTag} MessageId={MessageId} CorrelationId={CorrelationId}",
-            args.DeliveryTag,
-            message.MessageId,
-            message.CorrelationId);
+            logger.LogDebug(
+                "Message buffered. DeliveryTag={DeliveryTag} MessageId={MessageId} CorrelationId={CorrelationId}",
+                args.DeliveryTag,
+                message.MessageId,
+                message.CorrelationId);
         }
     }
 
@@ -133,32 +147,82 @@ public sealed class RabbitMqConsumer : IAsyncDisposable
 
         await foreach (var batch in batchBuffer.ReadBatchesAsync(cancellationToken))
         {
-            var result = await storageWriter.WriteAsync(batch, cancellationToken);
+            var writeResult = await TryPersistBatchAsync(batch, cancellationToken);
 
-            if (result.Success)
+            if (writeResult.Success)
             {
-                foreach (var delivery in batch.Deliveries)
-                {
-                    await channel.BasicAckAsync(delivery.DeliveryTag, multiple: false, cancellationToken: cancellationToken);
-                    inFlight.TryRemove(delivery.DeliveryTag, out _);
-                    telemetry.SetQueueLag(inFlight.Count);
-                }
-
+                await AckBatchAsync(batch, cancellationToken);
                 continue;
             }
 
             telemetry.BatchFailed(batch.Deliveries.Count);
             telemetry.BatchRetried(batch.Deliveries.Count);
 
-            foreach (var delivery in batch.Deliveries)
-            {
-                await channel.BasicNackAsync(delivery.DeliveryTag, multiple: false, requeue: true, cancellationToken: cancellationToken);
-                inFlight.TryRemove(delivery.DeliveryTag, out _);
-                telemetry.SetQueueLag(inFlight.Count);
-            }
+            await RequeueBatchAsync(batch, cancellationToken);
 
-            logger.LogWarning("Batch persistence failed. BatchId={BatchId}. Messages requeued.", batch.BatchId);
+            logger.LogWarning(
+                "Batch persistence failed. BatchId={BatchId} Error={Error} MessagesRequeued={Count}",
+                batch.BatchId,
+                writeResult.Error,
+                batch.Deliveries.Count);
         }
+    }
+
+    private async Task<StorageWriteResult> TryPersistBatchAsync(CaptureBatch batch, CancellationToken cancellationToken)
+    {
+        try
+        {
+            return await storageWriter.WriteAsync(batch, cancellationToken);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(
+                ex,
+                "Unhandled persistence exception. BatchId={BatchId} MessageCount={MessageCount}",
+                batch.BatchId,
+                batch.Deliveries.Count);
+
+            return StorageWriteResult.FailureResult(ex.Message);
+        }
+    }
+
+    private async Task AckBatchAsync(CaptureBatch batch, CancellationToken cancellationToken)
+    {
+        if (channel is null)
+            throw new InvalidOperationException("RabbitMQ channel not initialized.");
+
+        foreach (var delivery in batch.Deliveries)
+        {
+            await channel.BasicAckAsync(delivery.DeliveryTag, multiple: false, cancellationToken: cancellationToken);
+            RemoveInFlight(delivery.DeliveryTag);
+        }
+    }
+
+    private async Task RequeueBatchAsync(CaptureBatch batch, CancellationToken cancellationToken)
+    {
+        if (channel is null)
+            throw new InvalidOperationException("RabbitMQ channel not initialized.");
+
+        foreach (var delivery in batch.Deliveries)
+        {
+            await channel.BasicNackAsync(
+                delivery.DeliveryTag,
+                multiple: false,
+                requeue: true,
+                cancellationToken: cancellationToken);
+
+            RemoveInFlight(delivery.DeliveryTag);
+        }
+    }
+
+    private void RemoveInFlight(ulong deliveryTag)
+    {
+        inFlight.TryRemove(deliveryTag, out _);
+        telemetry.SetQueueLag(inFlight.Count);
     }
 
     private void ValidateOptions()
@@ -182,6 +246,7 @@ public sealed class RabbitMqConsumer : IAsyncDisposable
         }
         catch
         {
+            // Intentionally ignored during teardown.
         }
 
         if (channel is not null)
@@ -193,6 +258,7 @@ public sealed class RabbitMqConsumer : IAsyncDisposable
         channel = null;
         connection = null;
         consumerTag = null;
+
         telemetry.SetQueueLag(0);
     }
 

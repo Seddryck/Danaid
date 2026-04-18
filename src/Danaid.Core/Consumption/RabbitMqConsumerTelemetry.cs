@@ -1,7 +1,7 @@
 using System.Diagnostics.Metrics;
 using System.Threading;
 
-namespace Danaid.Core;
+namespace Danaid.Core.Consumption;
 
 public interface IRabbitMqConsumerTelemetry
 {

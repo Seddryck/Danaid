@@ -5,7 +5,7 @@ using System.Threading.Channels;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
-namespace Danaid.Core;
+namespace Danaid.Core.Capture;
 
 public sealed class CaptureBatchBuffer
 {
@@ -101,30 +101,3 @@ public sealed class CaptureBatchBuffer
         return batch;
     }
 }
-
-public sealed class CaptureBatchBufferOptions
-{
-    public int Capacity { get; init; } = 10_000;
-    public int MaxCount { get; init; } = 500;
-    public long MaxBytes { get; init; } = 4 * 1024 * 1024;
-    public TimeSpan MaxWait { get; init; } = TimeSpan.FromSeconds(2);
-}
-
-public sealed record BufferedDelivery(ulong DeliveryTag, CapturedMessage Message);
-
-public sealed record CapturedMessage(
-    byte[] Body,
-    IDictionary<string, object?>? Headers,
-    string RoutingKey,
-    string Exchange,
-    string? CorrelationId,
-    string? MessageId,
-    DateTimeOffset TimestampUtc
-);
-
-public sealed record CaptureBatch(
-    string BatchId,
-    DateTimeOffset CreatedAtUtc,
-    long TotalBytes,
-    IReadOnlyList<BufferedDelivery> Deliveries
-);

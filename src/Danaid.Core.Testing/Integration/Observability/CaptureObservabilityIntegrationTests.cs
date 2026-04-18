@@ -1,29 +1,27 @@
 using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Diagnostics.Metrics;
+using Danaid.Core.Capture;
 using Danaid.Core.Storage;
 using Microsoft.Extensions.Options;
 using NUnit.Framework;
 
-namespace Danaid.Core.Testing.Observability;
+namespace Danaid.Core.Testing.Integration.Observability;
 
 [TestFixture]
-public class ConfigurableQueueConsumptionObservabilityTests
+[Category("Observability")]
+public class CaptureObservabilityIntegrationTests
 {
     [Test]
-    public async Task VerifyRequiredLogs_EmitsBatchAndErrorContext()
+    public async Task WriteAsync_EmitsStructuredLogs_ForSuccessAndFailure()
     {
         var successLogger = new TestLogger<FileSystemStorageWriter>();
-        var tempPath = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"));
-        var successWriter = new FileSystemStorageWriter(
-            Options.Create(new FileSystemStorageWriterOptions { BasePath = tempPath, MaxRetries = 0 }),
-            successLogger);
+        var successWriter = CreateWriter(successLogger);
 
         var successBatch = CreateBatch("batch-log-success", "msg-1");
         await successWriter.WriteAsync(successBatch, CancellationToken.None);
 
         var successEntry = successLogger.Entries.Single(x => x.Message.Contains("Batch persisted."));
-        Assert.That(successEntry.Message, Does.Contain("batch-log-success"));
 
         var failureLogger = new TestLogger<FileSystemStorageWriter>();
         var failureWriter = new FileSystemStorageWriter(
@@ -32,19 +30,19 @@ public class ConfigurableQueueConsumptionObservabilityTests
 
         var failureBatch = CreateBatch("batch-log-fail", "msg-2");
         var failureResult = await failureWriter.WriteAsync(failureBatch, CancellationToken.None);
-
-        Assert.That(failureResult.Success, Is.False);
-
         var errorEntry = failureLogger.Entries.Single(x => x.Level == Microsoft.Extensions.Logging.LogLevel.Error);
+
         Assert.Multiple(() =>
         {
+            Assert.That(successEntry.Message, Does.Contain("batch-log-success"));
+            Assert.That(failureResult.Success, Is.False);
             Assert.That(errorEntry.Message, Does.Contain("batch-log-fail"));
             Assert.That(errorEntry.Exception, Is.Not.Null);
         });
     }
 
     [Test]
-    public async Task MetricsAreEmitted_ForRequiredStorageAndBatchInstruments()
+    public async Task CaptureAndStorage_EmitExpectedMetrics()
     {
         var observed = new ConcurrentDictionary<string, long>();
 
@@ -67,27 +65,10 @@ public class ConfigurableQueueConsumptionObservabilityTests
 
         listener.Start();
 
-        var buffer = new CaptureBatchBuffer(
-            Options.Create(new CaptureBatchBufferOptions
-            {
-                Capacity = 10,
-                MaxCount = 1,
-                MaxBytes = 1024,
-                MaxWait = TimeSpan.FromMinutes(1)
-            }),
-            new TestLogger<CaptureBatchBuffer>());
+        var buffer = CreateBuffer();
+        await FlushSingleBatchAsync(buffer, "m-1");
 
-        await buffer.EnqueueAsync(CreateDelivery(1, "m-1"), CancellationToken.None);
-
-        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(2));
-        await foreach (var _ in buffer.ReadBatchesAsync(cts.Token))
-            break;
-
-        var tempPath = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"));
-        var writer = new FileSystemStorageWriter(
-            Options.Create(new FileSystemStorageWriterOptions { BasePath = tempPath, MaxRetries = 0 }),
-            new TestLogger<FileSystemStorageWriter>());
-
+        var writer = CreateWriter(new TestLogger<FileSystemStorageWriter>());
         await writer.WriteAsync(CreateBatch("batch-metrics", "m-2"), CancellationToken.None);
 
         Assert.Multiple(() =>
@@ -100,7 +81,7 @@ public class ConfigurableQueueConsumptionObservabilityTests
     }
 
     [Test]
-    public async Task TraceSpansAreEmitted_ForBatchAndStorageOperations()
+    public async Task CaptureAndStorage_EmitExpectedTraces()
     {
         var started = new List<Activity>();
         var stopped = new List<Activity>();
@@ -115,27 +96,10 @@ public class ConfigurableQueueConsumptionObservabilityTests
 
         ActivitySource.AddActivityListener(listener);
 
-        var buffer = new CaptureBatchBuffer(
-            Options.Create(new CaptureBatchBufferOptions
-            {
-                Capacity = 10,
-                MaxCount = 1,
-                MaxBytes = 1024,
-                MaxWait = TimeSpan.FromMinutes(1)
-            }),
-            new TestLogger<CaptureBatchBuffer>());
+        var buffer = CreateBuffer();
+        await FlushSingleBatchAsync(buffer, "trace-1");
 
-        await buffer.EnqueueAsync(CreateDelivery(1, "trace-1"), CancellationToken.None);
-
-        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(2));
-        await foreach (var _ in buffer.ReadBatchesAsync(cts.Token))
-            break;
-
-        var tempPath = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"));
-        var writer = new FileSystemStorageWriter(
-            Options.Create(new FileSystemStorageWriterOptions { BasePath = tempPath, MaxRetries = 0 }),
-            new TestLogger<FileSystemStorageWriter>());
-
+        var writer = CreateWriter(new TestLogger<FileSystemStorageWriter>());
         await writer.WriteAsync(CreateBatch("batch-trace", "trace-2"), CancellationToken.None);
 
         Assert.Multiple(() =>
@@ -145,6 +109,34 @@ public class ConfigurableQueueConsumptionObservabilityTests
             Assert.That(stopped.Any(x => x.OperationName == "capture.batch"), Is.True);
             Assert.That(stopped.Any(x => x.OperationName == "storage.write.batch"), Is.True);
         });
+    }
+
+    private static CaptureBatchBuffer CreateBuffer()
+        => new(
+            Options.Create(new CaptureBatchBufferOptions
+            {
+                Capacity = 10,
+                MaxCount = 1,
+                MaxBytes = 1024,
+                MaxWait = TimeSpan.FromMinutes(1)
+            }),
+            new TestLogger<CaptureBatchBuffer>());
+
+    private static async Task FlushSingleBatchAsync(CaptureBatchBuffer buffer, string messageId)
+    {
+        await buffer.EnqueueAsync(CreateDelivery(1, messageId), CancellationToken.None);
+
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(2));
+        await foreach (var _ in buffer.ReadBatchesAsync(cts.Token))
+            break;
+    }
+
+    private static FileSystemStorageWriter CreateWriter(TestLogger<FileSystemStorageWriter> logger)
+    {
+        var tempPath = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"));
+        return new FileSystemStorageWriter(
+            Options.Create(new FileSystemStorageWriterOptions { BasePath = tempPath, MaxRetries = 0 }),
+            logger);
     }
 
     private static CaptureBatch CreateBatch(string batchId, string messageId)

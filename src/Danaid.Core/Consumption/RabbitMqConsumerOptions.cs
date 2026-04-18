@@ -1,4 +1,4 @@
-namespace Danaid.Core;
+namespace Danaid.Core.Consumption;
 
 public sealed record RabbitMqConsumerOptions(string? ConsumerTag)
 {

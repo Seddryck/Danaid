@@ -7,8 +7,30 @@
     <Import Project="Danaid.Specs.projitems" Label="Shared" />
     <Import Project="$(MSBuildExtensionsPath32)\Microsoft\VisualStudio\v$(VisualStudioVersion)\CodeSharing\Microsoft.CodeSharing.CSharp.targets" />
     <ItemGroup>
-        <None Include="**\*.md" />
+        <None Include="features\Persistence Before Acknowledgement\Persistence Before Acknowledgement.md" />
         <None Include="**\*.txt" />
         <None Include="**\*.json" />
     </ItemGroup>
+
+    <PropertyGroup>
+        <TargetFramework>net10.0</TargetFramework>
+
+        <!-- Adjust if needed -->
+        <RepoRoot>$(MSBuildProjectDirectory)\..</RepoRoot>
+        <CopilotInstructionsDir>$(RepoRoot)\.github\instructions</CopilotInstructionsDir>
+    </PropertyGroup>
+
+    <ItemGroup>
+        <!-- Your source instruction files in the Shared project -->
+        <CopilotInstructionFiles Include="CopilotInstructions\**\*.instructions.md" />
+    </ItemGroup>
+
+    <Target Name="CopyCopilotInstructions" AfterTargets="Build">
+        <MakeDir Directories="$(CopilotInstructionsDir)" />
+
+        <Copy
+          SourceFiles="@(CopilotInstructionFiles)"
+          DestinationFiles="@(CopilotInstructionFiles->'$(CopilotInstructionsDir)\%(RecursiveDir)%(Filename)%(Extension)')"
+          SkipUnchangedFiles="true" />
+    </Target>
 </Project>
