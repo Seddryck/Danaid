@@ -9,8 +9,8 @@
     <Import_RootNamespace>Danaid.Specs</Import_RootNamespace>
   </PropertyGroup>
   <ItemGroup>
-    <None Include="$(MSBuildThisFileDirectory)features\Persistence Before Acknowledgement\Persistence Before Acknowledgement.tests.md" />
-    <None Include="$(MSBuildThisFileDirectory)features\Persistence Before Acknowledgement\Persistence Before Acknowledgement.plan.md" />
+    <None Include="$(MSBuildThisFileDirectory)features\Technical Metadata Capture\technical-metadata-capture.plan.md" />
+    <None Include="$(MSBuildThisFileDirectory)features\Technical Metadata Capture\technical-metadata-capture.tests.md" />
     <None Include="$(MSBuildThisFileDirectory)instructions\*.md" />
     <None Include="$(MSBuildThisFileDirectory)features\**\*.md" />
     <None Include="$(MSBuildThisFileDirectory)*.ps1" />

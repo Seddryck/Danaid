@@ -32,11 +32,11 @@ public class CaptureBatchBufferUnitTests
 
     private static BufferedDelivery CreateDelivery(ulong tag, string messageId)
         => new(tag, new CapturedMessage(
-            Body: [1],
-            Headers: new Dictionary<string, object?> { ["h"] = "v" },
-            RoutingKey: "rk",
-            Exchange: "ex",
-            CorrelationId: "corr",
-            MessageId: messageId,
-            TimestampUtc: DateTimeOffset.UtcNow));
+            body: [1],
+            headers: new Dictionary<string, object?> { ["h"] = "v" },
+            routingKey: "rk",
+            exchange: "ex",
+            correlationId: "corr",
+            messageId: messageId,
+            timestampUtc: DateTimeOffset.UtcNow));
 }

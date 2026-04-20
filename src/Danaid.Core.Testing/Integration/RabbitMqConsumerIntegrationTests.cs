@@ -14,6 +14,8 @@ namespace Danaid.Core.Testing.Integration;
 [Category("Resilience")]
 public class RabbitMqConsumerIntegrationTests
 {
+    private static readonly TimeSpan IntegrationWaitTimeout = TimeSpan.FromSeconds(10);
+
     [Test]
     public async Task Reconnect_ValidatesPersistentConsumerLifecycleAndRecovery()
     {
@@ -22,35 +24,36 @@ public class RabbitMqConsumerIntegrationTests
             var queueName = $"capture-restart-{Guid.NewGuid():N}";
             await EnsureQueueExistsAsync(rabbitMqContainer, queueName);
 
-            var failedBeforeRestart = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            var failedBeforeRestart = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
             var firstWriter = new Mock<IStorageWriter>();
             firstWriter
                 .Setup(x => x.WriteAsync(It.IsAny<CaptureBatch>(), It.IsAny<CancellationToken>()))
                 .ReturnsAsync(StorageWriteResult.FailureResult("simulated transient failure"))
-                .Callback(() => failedBeforeRestart.TrySetResult());
+                .Callback(() => failedBeforeRestart.TrySetResult(true));
 
-            var firstConsumer = CreateConsumer(CreateRabbitOptions(rabbitMqContainer, queueName), firstWriter.Object);
+            await using var firstConsumer = CreateConsumer(CreateRabbitOptions(rabbitMqContainer, queueName), firstWriter.Object);
             using var firstCts = new CancellationTokenSource();
             var firstRunTask = firstConsumer.RunAsync(firstCts.Token);
 
             await PublishAsync(rabbitMqContainer, queueName, "msg-restart-1");
-            await failedBeforeRestart.Task.WaitAsync(TimeSpan.FromSeconds(20));
+            await WaitOrFailAsync(failedBeforeRestart.Task, "first persistence failure before restart");
 
             firstCts.Cancel();
             try { await firstRunTask; } catch (OperationCanceledException) { }
 
-            var persistedAfterRestart = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            var persistedAfterRestart = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
             var secondWriter = new Mock<IStorageWriter>();
             secondWriter
                 .Setup(x => x.WriteAsync(It.IsAny<CaptureBatch>(), It.IsAny<CancellationToken>()))
                 .ReturnsAsync(StorageWriteResult.SuccessResult("fake://persisted"))
-                .Callback(() => persistedAfterRestart.TrySetResult());
+                .Callback(() => persistedAfterRestart.TrySetResult(true));
 
-            var secondConsumer = CreateConsumer(CreateRabbitOptions(rabbitMqContainer, queueName), secondWriter.Object);
+            await using var secondConsumer = CreateConsumer(CreateRabbitOptions(rabbitMqContainer, queueName), secondWriter.Object);
             using var secondCts = new CancellationTokenSource();
             var secondRunTask = secondConsumer.RunAsync(secondCts.Token);
 
-            await persistedAfterRestart.Task.WaitAsync(TimeSpan.FromSeconds(20));
+            await PublishAsync(rabbitMqContainer, queueName, "msg-restart-2");
+            await WaitOrFailAsync(persistedAfterRestart.Task, "persistence after restart");
 
             secondCts.Cancel();
             try { await secondRunTask; } catch (OperationCanceledException) { }
@@ -69,7 +72,7 @@ public class RabbitMqConsumerIntegrationTests
             var queueName = $"capture-redelivery-{Guid.NewGuid():N}";
             await EnsureQueueExistsAsync(rabbitMqContainer, queueName);
 
-            var persisted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            var persisted = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
             var writer = new Mock<IStorageWriter>();
             var attempts = 0;
             writer
@@ -80,16 +83,16 @@ public class RabbitMqConsumerIntegrationTests
                     if (attempts == 1)
                         return StorageWriteResult.FailureResult("first attempt fails");
 
-                    persisted.TrySetResult();
+                    persisted.TrySetResult(true);
                     return StorageWriteResult.SuccessResult("fake://persisted");
                 });
 
-            var consumer = CreateConsumer(CreateRabbitOptions(rabbitMqContainer, queueName), writer.Object);
+            await using var consumer = CreateConsumer(CreateRabbitOptions(rabbitMqContainer, queueName), writer.Object);
             using var cts = new CancellationTokenSource();
             var runTask = consumer.RunAsync(cts.Token);
 
             await PublishAsync(rabbitMqContainer, queueName, "msg-redelivery-1");
-            await persisted.Task.WaitAsync(TimeSpan.FromSeconds(20));
+            await WaitOrFailAsync(persisted.Task, "successful persistence after redelivery");
 
             cts.Cancel();
             try { await runTask; } catch (OperationCanceledException) { }
@@ -101,7 +104,13 @@ public class RabbitMqConsumerIntegrationTests
     private static RabbitMqConsumer CreateConsumer(RabbitMqConsumerOptions options, IStorageWriter storageWriter)
     {
         var batchBuffer = new CaptureBatchBuffer(
-            Options.Create(new CaptureBatchBufferOptions()),
+            Options.Create(new CaptureBatchBufferOptions
+            {
+                Capacity = 100,
+                MaxCount = 1,
+                MaxBytes = 1024,
+                MaxWait = TimeSpan.FromMilliseconds(100)
+            }),
             new TestLogger<CaptureBatchBuffer>());
 
         var telemetry = new Mock<IRabbitMqConsumerTelemetry>();
@@ -131,7 +140,8 @@ public class RabbitMqConsumerIntegrationTests
             UserName = userInfo[0],
             Password = userInfo.Length > 1 ? userInfo[1] : string.Empty,
             QueueName = queueName,
-            PrefetchCount = 1
+            PrefetchCount = 1,
+            ReconnectDelay = TimeSpan.FromMilliseconds(200)
         };
     }
 
@@ -140,7 +150,7 @@ public class RabbitMqConsumerIntegrationTests
         var factory = new ConnectionFactory { Uri = new Uri(container.GetConnectionString()) };
         await using var connection = await factory.CreateConnectionAsync();
         await using var channel = await connection.CreateChannelAsync();
-        await channel.QueueDeclareAsync(queue: queueName, durable: false, exclusive: false, autoDelete: true, arguments: null);
+        await channel.QueueDeclareAsync(queue: queueName, durable: false, exclusive: false, autoDelete: false, arguments: null);
     }
 
     private static async Task PublishAsync(RabbitMqContainer container, string queueName, string messageId)
@@ -174,6 +184,10 @@ public class RabbitMqConsumerIntegrationTests
             await container.StartAsync();
             await run(container);
         }
+        catch (AssertionException)
+        {
+            throw;
+        }
         catch (Exception ex)
         {
             Assert.Ignore($"Docker/RabbitMQ test skipped: {ex.Message}");
@@ -182,6 +196,18 @@ public class RabbitMqConsumerIntegrationTests
         {
             if (container is not null)
                 await container.DisposeAsync();
+        }
+    } // Added missing closing brace for RunWithRabbitMqContainerAsync method
+
+    private static async Task WaitOrFailAsync(Task signalTask, string operation)
+    {
+        try
+        {
+            await signalTask.WaitAsync(IntegrationWaitTimeout);
+        }
+        catch (TimeoutException)
+        {
+            Assert.Fail($"Timed out waiting for {operation}.");
         }
     }
 }

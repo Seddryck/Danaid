@@ -3,8 +3,10 @@ using Danaid.Core.Capture;
 using Danaid.Core.Storage;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+using Polly;
 using RabbitMQ.Client;
 using RabbitMQ.Client.Events;
+using RabbitMQ.Client.Exceptions;
 
 namespace Danaid.Core.Consumption;
 
@@ -15,6 +17,7 @@ public sealed class RabbitMqConsumer : IAsyncDisposable
     private readonly IStorageWriter storageWriter;
     private readonly IRabbitMqConsumerTelemetry telemetry;
     private readonly ILogger<RabbitMqConsumer> logger;
+    private readonly AsyncPolicy brokerRetryPolicy;
 
     private readonly ConcurrentDictionary<ulong, BufferedDelivery> inFlight = new();
 
@@ -34,6 +37,23 @@ public sealed class RabbitMqConsumer : IAsyncDisposable
         this.storageWriter = storageWriter;
         this.telemetry = telemetry;
         this.logger = logger;
+
+        brokerRetryPolicy = Policy
+            .Handle<BrokerUnreachableException>()
+            .Or<AlreadyClosedException>()
+            .Or<IOException>()
+            .WaitAndRetryAsync(
+                retryCount: 3,
+                sleepDurationProvider: _ => this.options.ReconnectDelay,
+                onRetry: (exception, delay, attempt, _) =>
+                {
+                    this.logger.LogWarning(
+                        exception,
+                        "Transient broker failure while establishing RabbitMQ consumption. Queue={QueueName} Attempt={Attempt} Delay={Delay}",
+                        this.options.QueueName,
+                        attempt,
+                        delay);
+                });
     }
 
     public async Task RunAsync(CancellationToken cancellationToken)
@@ -44,7 +64,10 @@ public sealed class RabbitMqConsumer : IAsyncDisposable
         {
             try
             {
-                await ConnectAndConsumeAsync(cancellationToken);
+                await brokerRetryPolicy.ExecuteAsync(
+                    async ct => await ConnectAndConsumeAsync(ct),
+                    cancellationToken);
+
                 await ProcessBatchesAsync(cancellationToken);
             }
             catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
@@ -109,18 +132,7 @@ public sealed class RabbitMqConsumer : IAsyncDisposable
 
     private async Task OnMessageReceivedAsync(object sender, BasicDeliverEventArgs args)
     {
-        var headers = args.BasicProperties.Headers is null
-            ? null
-            : new Dictionary<string, object?>(args.BasicProperties.Headers);
-
-        var message = new CapturedMessage(
-            Body: args.Body.ToArray(),
-            Headers: headers,
-            RoutingKey: args.RoutingKey,
-            Exchange: args.Exchange,
-            CorrelationId: args.BasicProperties.CorrelationId,
-            MessageId: args.BasicProperties.MessageId,
-            TimestampUtc: DateTimeOffset.UtcNow);
+        var message = RabbitMqDeliveryMapper.ToCapturedMessage(args);
 
         var buffered = new BufferedDelivery(args.DeliveryTag, message);
 

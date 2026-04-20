@@ -166,11 +166,11 @@ public class PersistenceBeforeAcknowledgementInteractionTests
 
     private static BufferedDelivery CreateDelivery(ulong deliveryTag, string messageId)
         => new(deliveryTag, new CapturedMessage(
-            Body: [1],
-            Headers: new Dictionary<string, object?> { ["header"] = "value" },
-            RoutingKey: "rk",
-            Exchange: "ex",
-            CorrelationId: "corr",
-            MessageId: messageId,
-            TimestampUtc: DateTimeOffset.UtcNow));
+            [1],
+            new Dictionary<string, object?> { ["header"] = "value" },
+            "rk",
+            "ex",
+            "corr",
+            messageId,
+            DateTimeOffset.UtcNow));
 }

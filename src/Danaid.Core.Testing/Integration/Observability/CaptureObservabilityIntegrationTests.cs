@@ -36,8 +36,10 @@ public class CaptureObservabilityIntegrationTests
         {
             Assert.That(successEntry.Message, Does.Contain("batch-log-success"));
             Assert.That(failureResult.Success, Is.False);
+            Assert.That(failureResult.Error, Is.EqualTo("storage.write_failed"));
             Assert.That(errorEntry.Message, Does.Contain("batch-log-fail"));
-            Assert.That(errorEntry.Exception, Is.Not.Null);
+            Assert.That(errorEntry.Exception, Is.Null);
+            Assert.That(errorEntry.Message, Does.Contain("ErrorCode=storage.write_failed"));
         });
     }
 
@@ -151,11 +153,11 @@ public class CaptureObservabilityIntegrationTests
 
     private static BufferedDelivery CreateDelivery(ulong tag, string messageId)
         => new(tag, new CapturedMessage(
-            Body: [1],
-            Headers: new Dictionary<string, object?> { ["header"] = "value" },
-            RoutingKey: "rk",
-            Exchange: "ex",
-            CorrelationId: "corr",
-            MessageId: messageId,
-            TimestampUtc: DateTimeOffset.UtcNow));
+            body: [1],
+            headers: new Dictionary<string, object?> { ["header"] = "value" },
+            routingKey: "rk",
+            exchange: "ex",
+            correlationId: "corr",
+            messageId: messageId,
+            timestampUtc: DateTimeOffset.UtcNow));
 }

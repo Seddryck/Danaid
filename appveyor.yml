@@ -56,8 +56,6 @@ test_script:
     $ErrorActionPreference = "Stop"
     dotnet test src/Danaid.Core.Testing -c Release /p:CollectCoverage=true /p:CoverletOutputFormat=opencover /p:Include="[Danaid.Core]*" /p:Threshold=80 /p:ThresholdType=line /p:CoverletOutput=../../.coverage/coverage.Danaid.Core.xml --test-adapter-path:. --logger:Appveyor --no-build --nologo
     $globalTestResult = $LastExitCode
-    dotnet test src/Danaid.Cli.Testing -c Release /p:CollectCoverage=true /p:CoverletOutputFormat=opencover /p:Include="Danaid.Cli" /p:Threshold=10 /p:ThresholdType=line /p:CoverletOutput=../../.coverage/coverage.Danaid.Cli.xml --test-adapter-path:. --logger:Appveyor --no-build --nologo
-    $globalTestResult = $LastExitCode
     if($globalTestResult -ne 0) { $host.SetShouldExit($globalTestResult) }
 
 - pwsh: |

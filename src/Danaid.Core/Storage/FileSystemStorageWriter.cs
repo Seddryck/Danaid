@@ -39,7 +39,10 @@ public sealed class FileSystemStorageWriter : IStorageWriter
                 onRetry: (exception, _, retryCount, _) =>
                 {
                     retryCounter.Add(1);
-                    logger.LogWarning(exception, "Batch persistence retry. Attempt={Attempt}", retryCount);
+                    logger.LogWarning(
+                        "Batch persistence retry. Attempt={Attempt} ExceptionType={ExceptionType}",
+                        retryCount,
+                        exception.GetType().Name);
                 });
     }
 
@@ -70,8 +73,13 @@ public sealed class FileSystemStorageWriter : IStorageWriter
         {
             failedCounter.Add(batch.Deliveries.Count);
             persistenceLatencyMs.Record(stopwatch.Elapsed.TotalMilliseconds);
-            logger.LogError(ex, "Batch persistence failed. BatchId={BatchId}", batch.BatchId);
-            return StorageWriteResult.FailureResult(ex.Message);
+            logger.LogError(
+                "Batch persistence failed. BatchId={BatchId} ErrorCode={ErrorCode} ExceptionType={ExceptionType}",
+                batch.BatchId,
+                options.FailureErrorCode,
+                ex.GetType().Name);
+
+            return StorageWriteResult.FailureResult(options.FailureErrorCode);
         }
     }
 
@@ -86,16 +94,59 @@ public sealed class FileSystemStorageWriter : IStorageWriter
         var payload = batch.Deliveries.Select(d => new
         {
             d.DeliveryTag,
-            d.Message.MessageId,
-            d.Message.CorrelationId,
-            d.Message.RoutingKey,
-            d.Message.Exchange,
-            d.Message.TimestampUtc,
-            Headers = d.Message.Headers,
-            BodyBase64 = Convert.ToBase64String(d.Message.Body)
+            RawPayloadBase64 = Convert.ToBase64String(d.Message.Body),
+            TechnicalMetadata = new
+            {
+                d.Message.MessageId,
+                d.Message.CorrelationId,
+                d.Message.RoutingKey,
+                d.Message.Exchange,
+                CaptureTimestampUtc = d.Message.TimestampUtc,
+                Headers = NormalizeHeaders(d.Message.Headers)
+            }
         });
 
         await JsonSerializer.SerializeAsync(stream, payload, cancellationToken: cancellationToken);
         return filePath;
+    }
+
+    private IDictionary<string, object?>? NormalizeHeaders(IDictionary<string, object?>? headers)
+    {
+        if (headers is null)
+            return null;
+
+        var normalized = new Dictionary<string, object?>(headers.Count, StringComparer.Ordinal);
+
+        foreach (var (key, value) in headers)
+        {
+            if (options.ExcludedHeaderKeys.Contains(key, StringComparer.OrdinalIgnoreCase))
+                continue;
+
+            normalized[key] = NormalizeValue(value);
+        }
+
+        return normalized;
+    }
+
+    private object? NormalizeValue(object? value)
+        => value switch
+        {
+            null => null,
+            byte[] bytes => Convert.ToBase64String(bytes),
+            ReadOnlyMemory<byte> memory => Convert.ToBase64String(memory.ToArray()),
+            IReadOnlyList<object?> list => list.Select(NormalizeValue).ToArray(),
+            string s => Truncate(s),
+            bool or char or byte or sbyte or short or ushort or int or uint or long or ulong or float or double or decimal or DateTime or DateTimeOffset or Guid => value,
+            _ => value.ToString()
+        };
+
+    private string Truncate(string value)
+    {
+        if (options.MaxHeaderValueLength <= 0)
+            return value;
+
+        return value.Length <= options.MaxHeaderValueLength
+            ? value
+            : value[..options.MaxHeaderValueLength];
     }
 }
