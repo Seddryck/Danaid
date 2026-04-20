@@ -15,7 +15,7 @@ skip_commits:
 
 environment:
   github_access_token:
-    secure: gt...
+    secure: gtEHCUmmDjYfrp/NEe2qUNROSj4yf+wAcNoLQX4qbFgLKVedO/c83OGs2TeAb0y4Smf8gcGGgKMqB1evAIGSYdXI9Ab8z+zL3eW3aFjY1woo3kL4aGo4mbGj6OpSsPiK
   docker_access_token:
     secure: ...
 
