@@ -15,7 +15,7 @@ skip_commits:
 
 environment:
   github_access_token:
-    secure: gt...
+    secure: gtEHCUmmDjYfrp/NEe2qUNROSj4yf+wAcNoLQX4qbFgLKVedO/c83OGs2TeAb0y4Smf8gcGGgKMqB1evAIGSYdXI9Ab8z+zL3eW3aFjY1woo3kL4aGo4mbGj6OpSsPiK
   docker_access_token:
     secure: ...
 
@@ -27,8 +27,14 @@ init:
 - cmd: setx DOTNET_NOLOGO 1
 - cmd: RefreshEnv.cmd
 
+install:
+- ps: |
+    Invoke-WebRequest -Uri 'https://dot.net/v1/dotnet-install.ps1' -UseBasicParsing -OutFile "$env:temp\dotnet-install.ps1"
+    & $env:temp\dotnet-install.ps1 -Architecture x64 -Version '10.0.100' -InstallDir "$env:ProgramFiles\dotnet"
+
 before_build:
 - pwsh: Write-Host "Target branch is '$($env:APPVEYOR_REPO_BRANCH)'"
+- cmd: dotnet --version
 - cmd: gitversion /output buildserver /verbosity Minimal
 - pwsh: Write-Host "Building Danaid version $($env:GitVersion_SemVer)"
 - pwsh: |
@@ -61,40 +67,40 @@ test_script:
 - pwsh: |
     $ProgressPreference = 'SilentlyContinue'
     Invoke-WebRequest -Uri https://uploader.codecov.io/latest/windows/codecov.exe -Outfile codecov.exe
-    .\codecov.exe --dir "./testing/.coverage/"
+    .\codecov.exe --dir ".coverage/"
 
 after_test:
 - dotnet pack src/Danaid.Core -p:version="%GitVersion_SemVer%" -c Release --include-symbols --no-build --nologo 
-- ps: |
-        if (($env:APPVEYOR_REPO_BRANCH -eq "main") -and ($null -eq $env:APPVEYOR_PULL_REQUEST_NUMBER)) {
-            ./package.ps1
-        }
-- ps: |
-        if (($env:APPVEYOR_REPO_BRANCH -eq "main") -and ($null -eq $env:APPVEYOR_PULL_REQUEST_NUMBER)) {    
-            Write-Host "Logging into Docker Hub ..."
-            docker login -u seddryck -p $env:docker_access_token
-            Write-Host "Successful log into Docker Hub ..."
+# - ps: |
+#         if (($env:APPVEYOR_REPO_BRANCH -eq "main") -and ($null -eq $env:APPVEYOR_PULL_REQUEST_NUMBER)) {
+#             ./package.ps1
+#         }
+# - ps: |
+#         if (($env:APPVEYOR_REPO_BRANCH -eq "main") -and ($null -eq $env:APPVEYOR_PULL_REQUEST_NUMBER)) {    
+#             Write-Host "Logging into Docker Hub ..."
+#             docker login -u seddryck -p $env:docker_access_token
+#             Write-Host "Successful log into Docker Hub ..."
 
-            Write-Host "Building docker image ..."    
-            docker build -t seddryck/danaid:$env:GitVersion_SemVer .
-            docker tag seddryck/danaid:$env:GitVersion_SemVer seddryck/danaid:latest
-            Write-Host "Docker image built."
+#             Write-Host "Building docker image ..."    
+#             docker build -t seddryck/danaid:$env:GitVersion_SemVer .
+#             docker tag seddryck/danaid:$env:GitVersion_SemVer seddryck/danaid:latest
+#             Write-Host "Docker image built."
 
-            Write-Host "Pushing to Docker Hub ..."
-            docker push seddryck/danaid:$env:GitVersion_SemVer
-            docker push seddryck/danaid:latest
-            Write-Host "Pushed to Docker Hub."
-        }
+#             Write-Host "Pushing to Docker Hub ..."
+#             docker push seddryck/danaid:$env:GitVersion_SemVer
+#             docker push seddryck/danaid:latest
+#             Write-Host "Pushed to Docker Hub."
+#         }
 
 artifacts:
 - path: '**\*.nupkg'
 - path: '**\*.snupkg'
-- path: '**\*.zip'
+# - path: '**\*.zip'
 
 deploy:
 - provider: NuGet
   api_key:
-    secure: 3EEYl8XRqcYYe/pDY/tQu+zT8kTsgHNTJE3tzgvH1L3lG77dBE0YESj2h0WegT7G
+    secure: TavQWPaL5ANwhevItksrvQLCLcQeDaYAKIQ1tKTGjQFyrJSi532GHkg0U+pnADYN
   skip_symbols: false
   artifact: /.*(\.|\.s)nupkg/
   on:

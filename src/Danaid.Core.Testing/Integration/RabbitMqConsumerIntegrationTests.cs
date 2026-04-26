@@ -155,7 +155,14 @@ public class RabbitMqConsumerIntegrationTests
 
     private static async Task PublishAsync(RabbitMqContainer container, string queueName, string messageId)
     {
-        var factory = new ConnectionFactory { Uri = new Uri(container.GetConnectionString()) };
+        var factory = new ConnectionFactory
+        {
+            Uri = new Uri(container.GetConnectionString()),
+            HostName = container.Hostname,
+            Port = container.GetMappedPublicPort(5672),
+            UserName = "guest",
+            Password = "guest"
+        };
         await using var connection = await factory.CreateConnectionAsync();
         await using var channel = await connection.CreateChannelAsync();
 
@@ -180,7 +187,11 @@ public class RabbitMqConsumerIntegrationTests
 
         try
         {
-            container = new RabbitMqBuilder().Build();
+            container = new RabbitMqBuilder()
+                            .WithImage("rabbitmq:3.13-management")
+                            .WithUsername("guest")
+                            .WithPassword("guest")
+                            .Build();
             await container.StartAsync();
             await run(container);
         }
