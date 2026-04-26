@@ -71,36 +71,36 @@ test_script:
 
 after_test:
 - dotnet pack src/Danaid.Core -p:version="%GitVersion_SemVer%" -c Release --include-symbols --no-build --nologo 
-- ps: |
-        if (($env:APPVEYOR_REPO_BRANCH -eq "main") -and ($null -eq $env:APPVEYOR_PULL_REQUEST_NUMBER)) {
-            ./package.ps1
-        }
-- ps: |
-        if (($env:APPVEYOR_REPO_BRANCH -eq "main") -and ($null -eq $env:APPVEYOR_PULL_REQUEST_NUMBER)) {    
-            Write-Host "Logging into Docker Hub ..."
-            docker login -u seddryck -p $env:docker_access_token
-            Write-Host "Successful log into Docker Hub ..."
+# - ps: |
+#         if (($env:APPVEYOR_REPO_BRANCH -eq "main") -and ($null -eq $env:APPVEYOR_PULL_REQUEST_NUMBER)) {
+#             ./package.ps1
+#         }
+# - ps: |
+#         if (($env:APPVEYOR_REPO_BRANCH -eq "main") -and ($null -eq $env:APPVEYOR_PULL_REQUEST_NUMBER)) {    
+#             Write-Host "Logging into Docker Hub ..."
+#             docker login -u seddryck -p $env:docker_access_token
+#             Write-Host "Successful log into Docker Hub ..."
 
-            Write-Host "Building docker image ..."    
-            docker build -t seddryck/danaid:$env:GitVersion_SemVer .
-            docker tag seddryck/danaid:$env:GitVersion_SemVer seddryck/danaid:latest
-            Write-Host "Docker image built."
+#             Write-Host "Building docker image ..."    
+#             docker build -t seddryck/danaid:$env:GitVersion_SemVer .
+#             docker tag seddryck/danaid:$env:GitVersion_SemVer seddryck/danaid:latest
+#             Write-Host "Docker image built."
 
-            Write-Host "Pushing to Docker Hub ..."
-            docker push seddryck/danaid:$env:GitVersion_SemVer
-            docker push seddryck/danaid:latest
-            Write-Host "Pushed to Docker Hub."
-        }
+#             Write-Host "Pushing to Docker Hub ..."
+#             docker push seddryck/danaid:$env:GitVersion_SemVer
+#             docker push seddryck/danaid:latest
+#             Write-Host "Pushed to Docker Hub."
+#         }
 
 artifacts:
 - path: '**\*.nupkg'
 - path: '**\*.snupkg'
-- path: '**\*.zip'
+# - path: '**\*.zip'
 
 deploy:
 - provider: NuGet
   api_key:
-    secure: 3EEYl8XRqcYYe/pDY/tQu+zT8kTsgHNTJE3tzgvH1L3lG77dBE0YESj2h0WegT7G
+    secure: TavQWPaL5ANwhevItksrvQLCLcQeDaYAKIQ1tKTGjQFyrJSi532GHkg0U+pnADYN
   skip_symbols: false
   artifact: /.*(\.|\.s)nupkg/
   on:
