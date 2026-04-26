@@ -67,7 +67,7 @@ test_script:
 - pwsh: |
     $ProgressPreference = 'SilentlyContinue'
     Invoke-WebRequest -Uri https://uploader.codecov.io/latest/windows/codecov.exe -Outfile codecov.exe
-    .\codecov.exe --dir "./testing/.coverage/"
+    .\codecov.exe --dir ".coverage/"
 
 after_test:
 - dotnet pack src/Danaid.Core -p:version="%GitVersion_SemVer%" -c Release --include-symbols --no-build --nologo 
