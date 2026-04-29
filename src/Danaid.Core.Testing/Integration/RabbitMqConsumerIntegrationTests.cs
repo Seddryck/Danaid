@@ -208,7 +208,7 @@ public class RabbitMqConsumerIntegrationTests
             if (container is not null)
                 await container.DisposeAsync();
         }
-    } // Added missing closing brace for RunWithRabbitMqContainerAsync method
+    }
 
     private static async Task WaitOrFailAsync(Task signalTask, string operation)
     {
