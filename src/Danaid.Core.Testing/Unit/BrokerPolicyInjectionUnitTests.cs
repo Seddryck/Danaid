@@ -53,7 +53,7 @@ namespace Danaid.Core.Testing.Unit
             };
 
             var batchBuffer = new CaptureBatchBuffer(Options.Create(new CaptureBatchBufferOptions()), new TestLogger<CaptureBatchBuffer>());
-            var storageWriter = new Mock<Danaid.Core.Storage.IStorageWriter>();
+            var storageWriter = new Mock<Storage.IStorageWriter>();
             var telemetry = new Mock<IRabbitMqConsumerTelemetry>();
             var logger = new Mock<ILogger<RabbitMqConsumer>>();
 

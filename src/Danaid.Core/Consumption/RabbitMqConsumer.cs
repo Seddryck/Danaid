@@ -55,28 +55,9 @@ public sealed class RabbitMqConsumer : IAsyncDisposable
         else if (brokerRetryPolicyFactory is not null)
             this.brokerRetryPolicy = brokerRetryPolicyFactory.Create(this.options, this.logger);
         else
-            this.brokerRetryPolicy = CreateDefaultBrokerRetryPolicy(this.options, this.logger);
+            this.brokerRetryPolicy = new DefaultBrokerRetryPolicyFactory().Create(this.options, this.logger);
     }
 
-    public static AsyncPolicy CreateDefaultBrokerRetryPolicy(RabbitMqConsumerOptions options, ILogger<RabbitMqConsumer> logger)
-    {
-        return Policy
-            .Handle<BrokerUnreachableException>()
-            .Or<AlreadyClosedException>()
-            .Or<IOException>()
-            .WaitAndRetryAsync(
-                retryCount: 3,
-                sleepDurationProvider: _ => options.ReconnectDelay,
-                onRetry: (exception, delay, attempt, _) =>
-                {
-                    logger.LogWarning(
-                        exception,
-                        "Transient broker failure while establishing RabbitMQ consumption. Queue={QueueName} Attempt={Attempt} Delay={Delay}",
-                        options.QueueName,
-                        attempt,
-                        delay);
-                });
-    }
 
     public async Task RunAsync(CancellationToken cancellationToken)
     {

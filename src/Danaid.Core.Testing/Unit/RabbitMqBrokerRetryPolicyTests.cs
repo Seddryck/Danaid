@@ -33,8 +33,9 @@ namespace Danaid.Core.Testing.Unit
 
             var logger = new Mock<ILogger<RabbitMqConsumer>>();
 
-            // create the default policy via the public factory method (no reflection required)
-            var policy = RabbitMqConsumer.CreateDefaultBrokerRetryPolicy(options, logger.Object);
+            // create the default policy via the default factory implementation
+            var factory = new DefaultBrokerRetryPolicyFactory();
+            var policy = factory.Create(options, logger.Object);
             Assert.That(policy, Is.Not.Null);
 
             var attempts = 0;
