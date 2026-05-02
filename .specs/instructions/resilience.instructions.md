@@ -1,4 +1,4 @@
-# resilience.instructions.md
+# Resilience Guidelines
 
 ## Purpose
 

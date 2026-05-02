@@ -25,36 +25,39 @@ public sealed class RabbitMqConsumer : IAsyncDisposable
     private IChannel? channel;
     private string? consumerTag;
 
+    // Backwards-compatible 5-arg constructor retained for callers using reflection or older binaries.
     public RabbitMqConsumer(
         IOptions<RabbitMqConsumerOptions> options,
         CaptureBatchBuffer batchBuffer,
         IStorageWriter storageWriter,
         IRabbitMqConsumerTelemetry telemetry,
         ILogger<RabbitMqConsumer> logger)
+        : this(options, batchBuffer, storageWriter, telemetry, logger, brokerRetryPolicy: null)
+    {
+    }
+
+    public RabbitMqConsumer(
+        IOptions<RabbitMqConsumerOptions> options,
+        CaptureBatchBuffer batchBuffer,
+        IStorageWriter storageWriter,
+        IRabbitMqConsumerTelemetry telemetry,
+        ILogger<RabbitMqConsumer> logger,
+        IBrokerRetryPolicyFactory? brokerRetryPolicyFactory = null,
+        AsyncPolicy? brokerRetryPolicy = null)
     {
         this.options = options.Value;
         this.batchBuffer = batchBuffer;
         this.storageWriter = storageWriter;
         this.telemetry = telemetry;
         this.logger = logger;
-
-        brokerRetryPolicy = Policy
-            .Handle<BrokerUnreachableException>()
-            .Or<AlreadyClosedException>()
-            .Or<IOException>()
-            .WaitAndRetryAsync(
-                retryCount: 3,
-                sleepDurationProvider: _ => this.options.ReconnectDelay,
-                onRetry: (exception, delay, attempt, _) =>
-                {
-                    this.logger.LogWarning(
-                        exception,
-                        "Transient broker failure while establishing RabbitMQ consumption. Queue={QueueName} Attempt={Attempt} Delay={Delay}",
-                        this.options.QueueName,
-                        attempt,
-                        delay);
-                });
+        if (brokerRetryPolicy is not null)
+            this.brokerRetryPolicy = brokerRetryPolicy;
+        else if (brokerRetryPolicyFactory is not null)
+            this.brokerRetryPolicy = brokerRetryPolicyFactory.Create(this.options, this.logger);
+        else
+            this.brokerRetryPolicy = new DefaultBrokerRetryPolicyFactory().Create(this.options, this.logger);
     }
+
 
     public async Task RunAsync(CancellationToken cancellationToken)
     {

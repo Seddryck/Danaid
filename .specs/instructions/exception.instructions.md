@@ -1,4 +1,4 @@
-# exception.instructions.md
+# Exception Model Specification
 
 ## Purpose
 

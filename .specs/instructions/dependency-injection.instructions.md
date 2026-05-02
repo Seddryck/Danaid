@@ -1,4 +1,4 @@
-# dependency-injection.instructions.md
+# Dependency Injection Instructions
 
 ## Purpose
 

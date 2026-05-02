@@ -1,4 +1,4 @@
-# error-handling.instructions.md
+# Error Handling Instructions
 
 ## Purpose
 
