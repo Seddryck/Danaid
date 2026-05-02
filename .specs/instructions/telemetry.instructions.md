@@ -1,4 +1,4 @@
-# telemetry.instructions.md
+# Telemetry Guidelines
 
 ## Purpose
 

@@ -1,4 +1,4 @@
-# File Organization
+# File Organization for C# Types
 
 ## One class per file
 

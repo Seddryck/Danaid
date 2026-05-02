@@ -1,4 +1,4 @@
-# tests.instructions.md
+# Testing guidelines
 
 ## Purpose
 

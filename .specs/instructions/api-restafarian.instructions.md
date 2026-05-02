@@ -1,4 +1,4 @@
-# api-restafarian.instructions.md
+# API Restafarian Style Guide
 
 ## Purpose
 
