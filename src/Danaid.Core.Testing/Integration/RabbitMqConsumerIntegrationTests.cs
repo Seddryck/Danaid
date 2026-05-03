@@ -187,8 +187,7 @@ public class RabbitMqConsumerIntegrationTests
 
         try
         {
-            container = new RabbitMqBuilder()
-                            .WithImage("rabbitmq:3.13-management")
+            container = new RabbitMqBuilder("rabbitmq:3.13-management")
                             .WithUsername("guest")
                             .WithPassword("guest")
                             .Build();

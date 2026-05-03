@@ -1,3 +1,6 @@
+using System.Collections.Generic;
+using System.Diagnostics.Metrics;
+using System.Reflection;
 using System.Threading;
 using System.Threading.Tasks;
 using Danaid.Core.Capture;
@@ -8,6 +11,8 @@ using Microsoft.Extensions.Options;
 using Moq;
 using NUnit.Framework;
 using Polly;
+using RabbitMQ.Client;
+using RabbitMQ.Client.Events;
 
 namespace Danaid.Core.Testing.Unit;
 
@@ -90,6 +95,156 @@ public class RabbitMqConsumerUnitTests
         Assert.That(
             async () => await consumer.RunAsync(cts.Token),
             Throws.Nothing);
+    }
+
+    [Test]
+    [Category("Contract")]
+    public async Task OnMessageReceivedAsync_BuffersMessageAndUpdatesTelemetry()
+    {
+        var options = new RabbitMqConsumerOptions(null)
+        {
+            HostName = "localhost",
+            QueueName = "q-test"
+        };
+
+        var batchBuffer = new CaptureBatchBuffer(
+            Options.Create(new CaptureBatchBufferOptions()),
+            new TestLogger<CaptureBatchBuffer>());
+
+        var storageWriter = new Mock<IStorageWriter>();
+        storageWriter
+            .Setup(x => x.WriteAsync(It.IsAny<CaptureBatch>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(StorageWriteResult.SuccessResult("fake://location"));
+
+        var telemetry = new Mock<IRabbitMqConsumerTelemetry>();
+        telemetry.Setup(t => t.SetQueueLag(It.IsAny<int>()));
+        telemetry.Setup(t => t.MessageReceived());
+
+        var consumer = new RabbitMqConsumer(
+            Options.Create(options),
+            batchBuffer,
+            storageWriter.Object,
+            telemetry.Object,
+            new TestLogger<RabbitMqConsumer>());
+
+        var onMessageMethod = typeof(RabbitMqConsumer).GetMethod("OnMessageReceivedAsync", BindingFlags.Instance | BindingFlags.NonPublic);
+        Assert.That(onMessageMethod, Is.Not.Null);
+
+        var args = CreateArgs(
+            messageId: "m1",
+            correlationId: "c1",
+            routingKey: "rk",
+            exchange: "ex",
+            headers: null,
+            body: new byte[] { 1 });
+
+        var task = (Task)onMessageMethod!.Invoke(consumer, new object[] { null!, args })!;
+        await task.ConfigureAwait(false);
+
+        telemetry.Verify(t => t.MessageReceived(), Times.Once);
+        telemetry.Verify(t => t.SetQueueLag(It.Is<int>(n => n >= 1)), Times.AtLeastOnce);
+    }
+
+    [Test]
+    [Category("Contract")]
+    public void AckBatchAsync_ThrowsIfChannelNotInitialized()
+    {
+        var consumer = CreateMinimalConsumer();
+
+        var method = typeof(RabbitMqConsumer).GetMethod("AckBatchAsync", BindingFlags.Instance | BindingFlags.NonPublic);
+        Assert.That(method, Is.Not.Null);
+
+        var batch = CreateBatch();
+
+        try
+        {
+            var result = method!.Invoke(consumer, new object[] { batch, CancellationToken.None });
+            if (result is Task task)
+                Assert.That(async () => await task.ConfigureAwait(false), Throws.TypeOf<InvalidOperationException>());
+            else
+                Assert.Fail("Expected an exception when invoking AckBatchAsync but none was thrown.");
+        }
+        catch (TargetInvocationException tie)
+        {
+            Assert.That(tie.InnerException, Is.TypeOf<InvalidOperationException>());
+        }
+    }
+
+    [Test]
+    [Category("Contract")]
+    public void RequeueBatchAsync_ThrowsIfChannelNotInitialized()
+    {
+        var consumer = CreateMinimalConsumer();
+
+        var method = typeof(RabbitMqConsumer).GetMethod("RequeueBatchAsync", BindingFlags.Instance | BindingFlags.NonPublic);
+        Assert.That(method, Is.Not.Null);
+
+        var batch = CreateBatch();
+
+        try
+        {
+            var result = method!.Invoke(consumer, new object[] { batch, CancellationToken.None });
+            if (result is Task task)
+                Assert.That(async () => await task.ConfigureAwait(false), Throws.TypeOf<InvalidOperationException>());
+            else
+                Assert.Fail("Expected an exception when invoking RequeueBatchAsync but none was thrown.");
+        }
+        catch (TargetInvocationException tie)
+        {
+            Assert.That(tie.InnerException, Is.TypeOf<InvalidOperationException>());
+        }
+    }
+
+    [Test]
+    [Category("Resilience")]
+    public void TryPersistBatchAsync_ThrowsWhenOperationCanceledAndTokenCancelled()
+    {
+        using var cts = new CancellationTokenSource();
+        cts.Cancel();
+
+        var logger = new TestLogger<RabbitMqConsumer>();
+        var storageWriter = new Mock<IStorageWriter>();
+        storageWriter
+            .Setup(x => x.WriteAsync(It.IsAny<CaptureBatch>(), It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new OperationCanceledException(cts.Token));
+
+        var consumer = CreateConsumerWithStorageWriter(storageWriter, logger);
+
+        var method = typeof(RabbitMqConsumer).GetMethod("TryPersistBatchAsync", BindingFlags.Instance | BindingFlags.NonPublic);
+        Assert.That(method, Is.Not.Null);
+
+        var batch = CreateBatch();
+
+        Assert.That(
+            async () => await ((Task<StorageWriteResult>)method!.Invoke(consumer, new object[] { batch, cts.Token })!).ConfigureAwait(false),
+            Throws.TypeOf<OperationCanceledException>());
+    }
+
+    [Test]
+    [Category("Resilience")]
+    public async Task TryPersistBatchAsync_ReturnsFailureResultAndLogsError_WhenExceptionThrown()
+    {
+        var logger = new TestLogger<RabbitMqConsumer>();
+        var storageWriter = new Mock<IStorageWriter>();
+        storageWriter
+            .Setup(x => x.WriteAsync(It.IsAny<CaptureBatch>(), It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new InvalidOperationException("boom"));
+
+        var consumer = CreateConsumerWithStorageWriter(storageWriter, logger);
+
+        var method = typeof(RabbitMqConsumer).GetMethod("TryPersistBatchAsync", BindingFlags.Instance | BindingFlags.NonPublic);
+        Assert.That(method, Is.Not.Null);
+
+        var batch = CreateBatch();
+
+        var result = await ((Task<StorageWriteResult>)method!.Invoke(consumer, new object[] { batch, CancellationToken.None })!).ConfigureAwait(false);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(result.Success, Is.False);
+            Assert.That(result.Error, Is.EqualTo("boom"));
+            Assert.That(logger.Entries.Exists(e => e.Level == LogLevel.Error), Is.True);
+        });
     }
 
     [Test]
@@ -221,5 +376,92 @@ public class RabbitMqConsumerUnitTests
             new TestLogger<RabbitMqConsumer>(),
             brokerRetryPolicyFactory,
             brokerRetryPolicy);
+    }
+
+    private static RabbitMqConsumer CreateMinimalConsumer()
+    {
+        var options = new RabbitMqConsumerOptions(null)
+        {
+            HostName = "localhost",
+            QueueName = "q-test"
+        };
+
+        var batchBuffer = new CaptureBatchBuffer(
+            Options.Create(new CaptureBatchBufferOptions()),
+            new TestLogger<CaptureBatchBuffer>());
+
+        var storageWriter = new Mock<IStorageWriter>();
+        storageWriter
+            .Setup(x => x.WriteAsync(It.IsAny<CaptureBatch>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(StorageWriteResult.SuccessResult("fake://location"));
+
+        var telemetry = new Mock<IRabbitMqConsumerTelemetry>();
+        telemetry.Setup(t => t.SetQueueLag(It.IsAny<int>()));
+
+        return new RabbitMqConsumer(
+            Options.Create(options),
+            batchBuffer,
+            storageWriter.Object,
+            telemetry.Object,
+            new TestLogger<RabbitMqConsumer>());
+    }
+
+    private static RabbitMqConsumer CreateConsumerWithStorageWriter(Mock<IStorageWriter> storageWriter, TestLogger<RabbitMqConsumer> logger)
+    {
+        var options = new RabbitMqConsumerOptions(null)
+        {
+            HostName = "localhost",
+            QueueName = "q-test"
+        };
+
+        var batchBuffer = new CaptureBatchBuffer(
+            Options.Create(new CaptureBatchBufferOptions()),
+            new TestLogger<CaptureBatchBuffer>());
+
+        var telemetry = new Mock<IRabbitMqConsumerTelemetry>();
+        telemetry.Setup(t => t.SetQueueLag(It.IsAny<int>()));
+
+        return new RabbitMqConsumer(
+            Options.Create(options),
+            batchBuffer,
+            storageWriter.Object,
+            telemetry.Object,
+            logger);
+    }
+
+    private static CaptureBatch CreateBatch()
+        => new(
+            BatchId: Guid.NewGuid().ToString(),
+            CreatedAtUtc: DateTimeOffset.UtcNow,
+            TotalBytes: 1,
+            Deliveries: new List<BufferedDelivery>
+            {
+                new BufferedDelivery(1, new CapturedMessage(new byte[] { 1 }, new TechnicalMetadata(null!, "", "", null, null, DateTimeOffset.UtcNow)))
+            });
+
+    private static BasicDeliverEventArgs CreateArgs(
+        string? messageId,
+        string? correlationId,
+        string routingKey,
+        string exchange,
+        IDictionary<string, object?>? headers,
+        byte[] body)
+    {
+        var basicProperties = new BasicProperties
+        {
+            MessageId = messageId,
+            CorrelationId = correlationId,
+            Headers = headers
+        };
+
+        return new BasicDeliverEventArgs(
+            "test-consumer",
+            1,
+            false,
+            exchange,
+            routingKey,
+            basicProperties,
+            new ReadOnlyMemory<byte>(body),
+            CancellationToken.None);
     }
 }
