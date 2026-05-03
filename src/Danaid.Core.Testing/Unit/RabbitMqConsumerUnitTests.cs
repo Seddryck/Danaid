@@ -98,6 +98,84 @@ public class RabbitMqConsumerUnitTests
     }
 
     [Test]
+    [Category("Configuration")]
+    public void RunAsync_Throws_WhenOptionsInvalid()
+    {
+        var consumer = CreateConsumer(new RabbitMqConsumerOptions(null)
+        {
+            HostName = "localhost",
+            QueueName = string.Empty
+        });
+
+        Assert.That(
+            async () => await consumer.RunAsync(CancellationToken.None),
+            Throws.TypeOf<InvalidOperationException>());
+    }
+
+    [Test]
+    [Category("Resilience")]
+    public void RunAsync_ReturnsImmediately_WhenCancellationRequested()
+    {
+        var consumer = CreateConsumer(new RabbitMqConsumerOptions(null)
+        {
+            HostName = "localhost",
+            QueueName = "q-test"
+        });
+
+        using var cts = new CancellationTokenSource();
+        cts.Cancel();
+
+        Assert.That(
+            async () => await consumer.RunAsync(cts.Token),
+            Throws.Nothing);
+    }
+
+    [Test]
+    [Category("Resilience")]
+    public void RunAsync_UsesInjectedNoOpPolicy()
+    {
+        using var cts = new CancellationTokenSource();
+        var policy = new CancelingNoOpPolicy(cts);
+
+        var consumer = CreateConsumer(new RabbitMqConsumerOptions(null)
+        {
+            HostName = "localhost",
+            QueueName = "q-test"
+        }, brokerRetryPolicy: policy);
+
+        Assert.That(
+            async () => await consumer.RunAsync(cts.Token),
+            Throws.Nothing);
+
+        Assert.That(policy.WasExecuted, Is.True);
+    }
+
+    [Test]
+    [Category("Resilience")]
+    public void RunAsync_UsesInjectedPolicyFactory()
+    {
+        using var cts = new CancellationTokenSource();
+        var policy = new CancelingNoOpPolicy(cts);
+
+        var factory = new Mock<IBrokerRetryPolicyFactory>();
+        factory.Setup(f => f.Create(It.IsAny<RabbitMqConsumerOptions>(), It.IsAny<ILogger<RabbitMqConsumer>>()))
+            .Returns(policy);
+
+        var consumer = CreateConsumer(new RabbitMqConsumerOptions(null)
+        {
+            HostName = "localhost",
+            QueueName = "q-test"
+        }, brokerRetryPolicyFactory: factory.Object);
+
+        Assert.That(
+            async () => await consumer.RunAsync(cts.Token),
+            Throws.Nothing);
+
+        factory.Verify(f => f.Create(It.IsAny<RabbitMqConsumerOptions>(), It.IsAny<ILogger<RabbitMqConsumer>>()), Times.Once);
+        Assert.That(policy.WasExecuted, Is.True);
+    }
+
+    [Test]
     [Category("Contract")]
     public async Task OnMessageReceivedAsync_BuffersMessageAndUpdatesTelemetry()
     {
