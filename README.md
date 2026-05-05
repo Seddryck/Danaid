@@ -40,13 +40,13 @@ ready for lakehouse processing
 [![twitter badge](https://img.shields.io/badge/twitter%20Danaid-@Seddryck-blue.svg?style=flat&logo=twitter)](https://twitter.com/Seddryck)
 
 **Releases:** [![GitHub releases](https://img.shields.io/github/v/release/seddryck/danaid?label=GitHub%20releases)](https://github.com/seddryck/danaid/releases/latest) 
-[![nuget](https://img.shields.io/nuget/v/Danaid-cli.svg)](https://www.nuget.org/packages/Danaid-cli/) [![Docker Image Version](https://img.shields.io/docker/v/seddryck/danaid?label=docker%20hub&color=0db7ed)](https://hub.docker.com/repository/docker/seddryck/danaid/) [![GitHub Release Date](https://img.shields.io/github/release-date/seddryck/Danaid.svg)](https://github.com/Seddryck/Danaid/releases/latest) [![licence badge](https://img.shields.io/badge/License-Apache%202.0-yellow.svg)](https://github.com/Seddryck/Danaid/blob/master/LICENSE) 
+[![nuget](https://img.shields.io/nuget/v/Danaid-cli.svg)](https://www.nuget.org/packages/Danaid.Core/) <!-- [![Docker Image Version](https://img.shields.io/docker/v/seddryck/danaid?label=docker%20hub&color=0db7ed)](https://hub.docker.com/repository/docker/seddryck/danaid/)--> [![GitHub Release Date](https://img.shields.io/github/release-date/seddryck/Danaid.svg)](https://github.com/Seddryck/Danaid/releases/latest) [![licence badge](https://img.shields.io/badge/License-Apache%202.0-yellow.svg)](https://github.com/Seddryck/Danaid/blob/master/LICENSE) 
 
 **Dev. activity:** [![GitHub last commit](https://img.shields.io/github/last-commit/Seddryck/Danaid.svg)](https://github.com/Seddryck/Danaid/commits)
 ![Still maintained](https://img.shields.io/maintenance/yes/2026.svg)
 ![GitHub commit activity](https://img.shields.io/github/commit-activity/y/Seddryck/Danaid)
 
-**Continuous integration builds:** [![Build status](https://ci.appveyor.com/api/projects/status/na3dklqjsuv1lbfv?svg=true)](https://ci.appveyor.com/project/Seddryck/Danaid/)
+**Continuous integration builds:** [![Build status](https://ci.appveyor.com/api/projects/status/infwf1wchegmda9u?svg=true)](https://ci.appveyor.com/project/Seddryck/Danaid/)
 [![Tests](https://img.shields.io/appveyor/tests/seddryck/Danaid.svg)](https://ci.appveyor.com/project/Seddryck/Danaid/build/tests)
 [![CodeFactor](https://www.codefactor.io/repository/github/seddryck/Danaid/badge)](https://www.codefactor.io/repository/github/seddryck/Danaid)
 [![codecov](https://codecov.io/github/Seddryck/Danaid/branch/main/graph/badge.svg?token=YRA8IRIJYV)](https://codecov.io/github/Seddryck/Danaid)
